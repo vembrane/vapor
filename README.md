@@ -1,2 +1,2 @@
 # vapor
-vapor parallizes a vcf calculation
+vapor parallelizes a vcf calculation

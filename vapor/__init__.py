@@ -4,15 +4,28 @@ from multiprocessing import Pool
 from pysam import VariantFile
 import tempfile
 import sys
-from functools import partial
+import subprocess
+import time
 
+from functools import partial
 
 def execute_single(filename, command, tmp_dir, region):
     #generate outfilename
-    outfilename = region
-    cmd = f"bcftools view -r {region} {filename} -Ou | bcftools view -t {region} | {command} | bcftools view -Ob > {tmp_dir}/{outfilename}.bcf"
-    os.system(cmd)
-    return os.path.join(tmp_dir, f"{outfilename}.bcf")
+    outfilename = os.path.join(tmp_dir, f"{'_'.join(map(str, region))}.vcf")
+    #cmd = f"{command}| bcftools view -Ob > {tmp_dir}/{outfilename}.bcf"
+    cmd = f"{command} > {outfilename}"
+    #print(cmd)
+    #| bcftools view -Ob > {tmp_dir}/{outfilename}.bcf
+    sp = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE)
+    pipe = sp.stdin
+
+    with VariantFile(filename) as f:
+        pipe.write(str(f.header).encode())
+        for record in f.fetch(*region):
+            pipe.write(str(record).encode())
+    pipe.close()
+    sp.wait()
+    return outfilename
 
 
 def execute(filename, command, stepsize, ncores, tmp_dir):
@@ -23,7 +36,7 @@ def execute(filename, command, stepsize, ncores, tmp_dir):
             last = 0
             for x in list(range(0, contig.length, stepsize)):
                 stop = min(last + stepsize - 1, contig.length)
-                regions.append(f"{name}:{last}-{stop}")
+                regions.append((name, last, stop))
                 last = stop + 1
 
     # command = "SnpSift annotate {ss_args} {args.database_vcf} /dev/stdin"
@@ -35,9 +48,9 @@ def execute(filename, command, stepsize, ncores, tmp_dir):
             for outfilename in p.imap(execute_partial, regions):
                 #print("merge", outfilename, file=sys.stderr)
                 if first:
-                    cmd = f"bcftools view {outfilename}"
+                    cmd = f"cat {outfilename}"
                 else:
-                    cmd = f'bcftools view {outfilename} | grep -v "#"'
+                    cmd = f'cat {outfilename} | grep -v "#"'
                 os.system(cmd)
                 os.remove(outfilename)
                 first = False

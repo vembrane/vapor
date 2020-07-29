@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "vembrane"
+name = "vapor"
 version = "0.1.0"
 description = "Execute VCF tools in parallel."
 authors = ["Christopher Schröder"]
 
 [tool.poetry.scripts]
-vapor = 'vapor:main"
+vapor = "vapor:main"
 
 [tool.poetry.dependencies]
 python = "^3.7"

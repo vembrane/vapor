@@ -4,11 +4,21 @@ from multiprocessing import Pool
 from pysam import VariantFile
 import tempfile
 import sys
+from functools import partial
 
-def execute(filename, command, stepsize, ncores, tmp_base):
+
+def execute_single(filename, command, tmp_dir, region):
+    #generate outfilename
+    outfilename = region
+    cmd = f"bcftools view -r {region} {filename} -Ou | bcftools view -t {region} | {command} | bcftools view -Ob > {tmp_dir}/{outfilename}.bcf"
+    os.system(cmd)
+    return os.path.join(tmp_dir, f"{outfilename}.bcf")
+
+
+def execute(filename, command, stepsize, ncores, tmp_dir):
     # create regions
+    regions = []
     with VariantFile(filename) as f:
-        regions = []
         for name, contig in f.header.contigs.items():
             last = 0
             for x in list(range(0, contig.length, stepsize)):
@@ -18,28 +28,24 @@ def execute(filename, command, stepsize, ncores, tmp_base):
 
     # command = "SnpSift annotate {ss_args} {args.database_vcf} /dev/stdin"
 
-    with tempfile.TemporaryDirectory(dir=tmp_base) as tmp_dir:
-
-        def execute_partial(x):
-            cmd = f"bcftools view -r {x} {filename} -Ou | bcftools view -t {x} | {command} | bcftools view -Ob > {tmp_dir}/{x}.bcf"
-            os.system(cmd)
-            return os.path.join(tmp_dir, f"{x}.bcf")
-
+    with tempfile.TemporaryDirectory(dir=tmp_dir) as tmp_dir:
         with Pool(ncores) as p:
             first = True
-            for filename in p.imap(execute_partial, regions):
-                print("merge", filename, file=sys.stderr)
+            execute_partial = partial(execute_single, filename, command, tmp_dir)
+            for outfilename in p.imap(execute_partial, regions):
+                #print("merge", outfilename, file=sys.stderr)
                 if first:
-                    cmd = f"bcftools view {filename}"
+                    cmd = f"bcftools view {outfilename}"
                 else:
-                    cmd = f'bcftools view {filename} | grep -v "#"'
+                    cmd = f'bcftools view {outfilename} | grep -v "#"'
                 os.system(cmd)
-                os.remove(filename)
+                os.remove(outfilename)
                 first = False
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("file_vcf")
+    parser.add_argument("vcf")
     parser.add_argument("command")
     parser.add_argument("--stepsize", "-s", type=int, default=1000000)
     parser.add_argument("--threads", "-t", type=int, default=8)
@@ -48,4 +54,4 @@ def main():
     )
 
     args = parser.parse_args()
-    execute(args.file_vcf, args.command, args.stepsize, args.threads, args.tmp)
+    execute(args.vcf, args.command, args.stepsize, args.threads, args.tmp)

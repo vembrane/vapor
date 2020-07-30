@@ -12,10 +12,7 @@ from functools import partial
 def execute_single(filename, command, tmp_dir, region):
     #generate outfilename
     outfilename = os.path.join(tmp_dir, f"{'_'.join(map(str, region))}.vcf")
-    #cmd = f"{command}| bcftools view -Ob > {tmp_dir}/{outfilename}.bcf"
     cmd = f"{command} > {outfilename}"
-    #print(cmd)
-    #| bcftools view -Ob > {tmp_dir}/{outfilename}.bcf
     sp = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE)
     pipe = sp.stdin
 
@@ -28,16 +25,26 @@ def execute_single(filename, command, tmp_dir, region):
     return outfilename
 
 
-def execute(filename, command, stepsize, ncores, tmp_dir):
-    # create regions
-    regions = []
+def create_regions(filename, stepsize):
     with VariantFile(filename) as f:
         for name, contig in f.header.contigs.items():
-            last = 0
-            for x in list(range(0, contig.length, stepsize)):
-                stop = min(last + stepsize - 1, contig.length)
-                regions.append((name, last, stop))
-                last = stop + 1
+            start = 0
+            while start < contig.length:
+                first_record = next(f.fetch(name, start), None)
+                if not first_record:
+                    break #no more variants in contig
+                start = first_record.pos
+                stop = min(start + stepsize - 1, contig.length)
+                yield (name, start, stop)
+                start = stop + 1
+
+
+def execute(filename, command, stepsize, ncores, tmp_dir):
+    # create regions
+    #regions = create_regions(filename, stepsize)
+    regions = list(create_regions_advanced(filename, stepsize))
+    print(regions)
+    exit()
 
     # command = "SnpSift annotate {ss_args} {args.database_vcf} /dev/stdin"
 

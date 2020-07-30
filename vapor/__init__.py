@@ -9,8 +9,9 @@ import time
 
 from functools import partial
 
+
 def execute_single(filename, command, tmp_dir, region):
-    #generate outfilename
+    # generate outfilename
     outfilename = os.path.join(tmp_dir, f"{'_'.join(map(str, region))}.vcf")
     cmd = f"{command} > {outfilename}"
     sp = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE)
@@ -26,13 +27,14 @@ def execute_single(filename, command, tmp_dir, region):
 
 
 def create_regions(filename, stepsize):
+    # smart region geration, large regions with no coverage are ignored
     with VariantFile(filename) as f:
         for name, contig in f.header.contigs.items():
             start = 0
             while start < contig.length:
                 first_record = next(f.fetch(name, start), None)
                 if not first_record:
-                    break #no more variants in contig
+                    break  # no more variants in contig
                 start = first_record.pos
                 stop = min(start + stepsize - 1, contig.length)
                 yield (name, start, stop)
@@ -41,7 +43,7 @@ def create_regions(filename, stepsize):
 
 def execute(filename, command, stepsize, ncores, tmp_dir):
     # create regions
-    #regions = create_regions(filename, stepsize)
+    # regions = create_regions(filename, stepsize)
     regions = list(create_regions_advanced(filename, stepsize))
     print(regions)
     exit()
@@ -53,7 +55,7 @@ def execute(filename, command, stepsize, ncores, tmp_dir):
             first = True
             execute_partial = partial(execute_single, filename, command, tmp_dir)
             for outfilename in p.imap(execute_partial, regions):
-                #print("merge", outfilename, file=sys.stderr)
+                # print("merge", outfilename, file=sys.stderr)
                 if first:
                     cmd = f"cat {outfilename}"
                 else:
